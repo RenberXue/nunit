@@ -1,3 +1,4 @@
+#load pubapi.cake
 #tool nuget:?package=NUnit.ConsoleRunner&version=3.7.0
 
 //////////////////////////////////////////////////////////////////////
@@ -6,6 +7,9 @@
 
 var target = Argument("target", "Default");
 var configuration = Argument("configuration", "Release");
+
+bool CI;
+if (!bool.TryParse(EnvironmentVariable("CI"), out CI)) CI = false;
 
 //////////////////////////////////////////////////////////////////////
 // SET ERROR LEVELS
@@ -152,7 +156,20 @@ Task("Build")
         else
             msbuildSettings.ToolPath = Context.Tools.Resolve("msbuild");
 
+        var originalPublicApi = CI ? PubApiFiles.ReadSnapshot(Directory("src/NUnitFramework/pubapi")) : null;
+
         MSBuild(SOLUTION_FILE, msbuildSettings);
+
+        if (CI)
+        {
+            var changedApiFiles = originalPublicApi.GetChangedFiles();
+            if (changedApiFiles.Any())
+            {
+                ErrorDetail.Add(
+                    "Public API changes should be committed as part of the PR. Changed files:" + Environment.NewLine
+                    + string.Join(Environment.NewLine, changedApiFiles));
+            }
+        }
 
         DotNetCorePublish("src/NUnitFramework/tests/nunit.framework.tests.csproj", new DotNetCorePublishSettings
         {
